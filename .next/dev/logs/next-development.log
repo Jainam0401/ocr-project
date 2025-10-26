@@ -1,0 +1,57 @@
+[00:00:01.959] Server  LOG      ✓ Ready in 1467ms
+[00:00:06.329] Browser ERROR   A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+%s%s https://react.dev/link/hydration-mismatch 
+
+  ...
+    <LoadingBoundary name="/" loading={null}>
+      <HTTPAccessFallbackBoundary notFound={<SegmentViewNode>} forbidden={undefined} unauthorized={undefined}>
+        <HTTPAccessFallbackErrorBoundary pathname="/" notFound={<SegmentViewNode>} forbidden={undefined} ...>
+          <RedirectBoundary>
+            <RedirectErrorBoundary router={{...}}>
+              <InnerLayoutRouter url="/" tree={[...]} params={{}} cacheNode={{lazyData:null, ...}} segmentPath={[...]} ...>
+                <SegmentViewNode type="page" pagePath="page.tsx">
+                  <SegmentTrieNode>
+                  <ClientPageRoot Component={function Home} serverProvidedParams={{...}}>
+                    <Home params={Promise} searchParams={Promise}>
+                      <div className="min-h-scre...">
+                        <div className="max-w-4xl ...">
+                          <div>
+                          <div className="bg-white r...">
+                            <form onSubmit={function handleUpload} className="space-y-6">
+                              <div>
+                                <label>
+                                <select
+                                  value="eng"
+                                  onChange={function onChange}
+                                  className="w-full px-4 py-2 border text-black border-gray-300 rounded-lg focus:ring-..."
+                                  disabled={false}
+-                                 jf-ext-cache-id="0"
+                                >
+                              <div>
+                              <button
+                                type="submit"
+                                disabled={false}
+                                className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-b..."
+-                               jf-ext-button-ct="extract text"
+                              >
++                               Extract Text
+                ...
+              ...
+
+[00:00:11.249] Server  LOG     Uploaded: score_with_80_version.pdf (101.61 KB)
+[00:00:11.343] Server  LOG     Total pages: 2
+[00:00:11.343] Server  LOG     Converting PDF to images...
+[00:00:12.461] Server  LOG     Conversion done
+[00:00:12.463] Server  LOG     Running OCR on page 1/2
+[00:00:12.473] Server  LOG     Running OCR on page 2/2
+[00:00:14.655] Server  LOG     OCR completed in 3.42s
+[00:00:14.660] Server  LOG     Temporary folder deleted: C:\Users\ASUS\Desktop\ocr-project\temp\a1c07edc-0812-4916-8e3b-8e7fd90701db

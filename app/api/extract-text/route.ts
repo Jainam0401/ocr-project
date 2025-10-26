@@ -1,21 +1,18 @@
-// app/api/extract-text/route.ts
-export const runtime = "nodejs"; // Ensure full Node.js runtime
+export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { fromPath } from "pdf2pic";
+import { exec } from "child_process";
+import util from "util";
 import { v4 as uuidv4 } from "uuid";
 import tesseract from "node-tesseract-ocr";
+import pLimit from "p-limit";
 
-export const maxDuration = 300; // 5 minutes max
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-interface OCRProgress {
-  currentPage: number;
-  totalPages: number;
-  status: string;
-}
+const execAsync = util.promisify(exec);
 
 export async function POST(req: NextRequest) {
   let tempDir: string | null = null;
@@ -28,97 +25,72 @@ export async function POST(req: NextRequest) {
     const language = (formData.get("language") as string) || "eng";
 
     if (!file) {
-      return NextResponse.json(
-        { success: false, error: "No file uploaded" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "No file uploaded" }, { status: 400 });
     }
 
     if (!file.name.toLowerCase().endsWith(".pdf")) {
-      return NextResponse.json(
-        { success: false, error: "Only PDF files are supported" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Only PDF files are supported" }, { status: 400 });
     }
 
-    // Create unique temp directory
+    // Temporary directory
     const uniqueId = uuidv4();
     tempDir = path.join(process.cwd(), "temp", uniqueId);
     await fs.mkdir(tempDir, { recursive: true });
 
-    // Save uploaded PDF
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     pdfPath = path.join(tempDir, `${uniqueId}.pdf`);
     await fs.writeFile(pdfPath, buffer);
 
-    console.log(`📄 Uploaded: ${file.name} (${(buffer.length / 1024).toFixed(2)} KB)`);
+    console.log(`Uploaded: ${file.name} (${(buffer.length / 1024).toFixed(2)} KB)`);
 
-    // Get page count using pdf-lib
     const pdfLib = await import("pdf-lib");
     const pdfDoc = await pdfLib.PDFDocument.load(buffer);
     const totalPages = pdfDoc.getPageCount();
-    console.log(`📊 Total pages: ${totalPages}`);
+    console.log(`Total pages: ${totalPages}`);
 
-    // Initialize pdf2pic converter
-    const convert = fromPath(pdfPath, {
-      density: 300,
-      saveFilename: "page",
-      savePath: tempDir,
-      format: "png",
-      width: 2480,
-      height: 3508,
-    });
+    console.log("Converting PDF to images...");
+    await execAsync(`pdftoppm "${pdfPath}" "${path.join(tempDir, "page")}" -png -r 200`);
+    console.log("Conversion done");
 
-    // OCR config
-    const config = {
-      lang: language,
-      oem: 1,
-      psm: 3,
-    };
+    const config = { lang: language, oem: 1, psm: 3 };
+    const limit = pLimit(3);
+    const ocrTasks: Promise<string>[] = [];
 
-    let extractedText = "";
-    const progress: OCRProgress[] = [];
-
-    // Process each page
     for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-      try {
-        console.log(`\n📄 Converting page ${pageNum}/${totalPages} to image...`);
-        await convert(pageNum, { responseType: "image" });
+      const imagePath = path.join(tempDir, `page-${pageNum}.png`);
 
-        const files = await fs.readdir(tempDir);
-        const imageName = files.find(
-          (f) => f.includes(`page.${pageNum}`) && f.endsWith(".png")
-        );
-
-        if (!imageName) {
-          console.error(`❌ Image not found for page ${pageNum}`);
-          extractedText += `\n\n--- Page ${pageNum} ---\n[Conversion Error]\n`;
-          continue;
-        }
-
-        const imagePath = path.join(tempDir, imageName);
-        console.log(`🔍 Running OCR on page ${pageNum}...`);
-
-        const text = await tesseract.recognize(imagePath, config);
-        extractedText += `\n\n--- Page ${pageNum} ---\n${text}`;
-
-        progress.push({
-          currentPage: pageNum,
-          totalPages,
-          status: `Completed page ${pageNum}`,
-        });
-
-        console.log(`✅ Page ${pageNum} OCR done`);
-      } catch (err: any) {
-        console.error(`❌ OCR failed on page ${pageNum}:`, err.message);
-        extractedText += `\n\n--- Page ${pageNum} ---\n[Error: ${err.message}]\n`;
-      }
+      ocrTasks.push(
+        limit(async () => {
+          console.log(`Running OCR on page ${pageNum}/${totalPages}`);
+          try {
+            const text = await tesseract.recognize(imagePath, config);
+            return `\n\n--- Page ${pageNum} ---\n${text}`;
+          } catch (err: any) {
+            console.error(`OCR failed on page ${pageNum}: ${err.message}`);
+            return `\n\n--- Page ${pageNum} ---\n[Error: ${err.message}]`;
+          }
+        })
+      );
     }
 
-    const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    const results = await Promise.allSettled(ocrTasks);
+    const extractedText = results
+      .map((r, i) => (r.status === "fulfilled" ? r.value : `--- Page ${i + 1} --- [Error]`))
+      .join("\n");
 
-    console.log(`\n✨ OCR extraction completed in ${totalTime}s`);
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`OCR completed in ${totalTime}s`);
+     if (tempDir) {
+      (async () => {
+        try {
+          await fs.rm(tempDir, { recursive: true, force: true });
+          console.log(`Temporary folder deleted: ${tempDir}`);
+        } catch (cleanupError: any) {
+          console.error("Cleanup error:", cleanupError.message);
+        }
+      })();
+    }
 
     return NextResponse.json({
       success: true,
@@ -129,38 +101,30 @@ export async function POST(req: NextRequest) {
         totalPages,
         language,
         processingTime: `${totalTime}s`,
+        concurrency: 3,
+        dpi: 200,
       },
-      progress,
     });
   } catch (error: any) {
-    console.error("❌ Error processing PDF:", error);
+    console.error("Error processing PDF:", error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message || "Failed to process PDF",
-        details: error.stack,
-      },
+      { success: false, error: error.message || "Failed to process PDF" },
       { status: 500 }
     );
   } finally {
-    // Cleanup
     if (tempDir) {
-      try {
-        await fs.rm(tempDir, { recursive: true, force: true });
-        console.log("🧹 Cleaned up temp files");
-      } catch (cleanupError: any) {
-        console.error("⚠️ Cleanup error:", cleanupError.message);
-      }
+      await fs.rm(tempDir, { recursive: true, force: true }).catch((e) =>
+        console.error("Cleanup error:", e.message)
+      );
     }
   }
 }
 
-// Health check
 export async function GET() {
   return NextResponse.json({
     status: "healthy",
     endpoint: "/api/extract-text",
     methods: ["POST"],
-    description: "OCR API for PDF text extraction (using node-tesseract-ocr)",
+    description: "PDF to text OCR extraction API",
   });
 }

@@ -13,6 +13,7 @@
     "formidable": "^3.5.4",
     "next": "16.0.0",
     "node-tesseract-ocr": "^2.2.1",
+    "p-limit": "^7.2.0",
     "pdf-lib": "^1.17.1",
     "pdf-poppler": "^0.2.3",
     "pdf-to-png-converter": "^3.10.0",
