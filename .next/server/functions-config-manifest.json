@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/extract-text": {
+      "maxDuration": 300
+    }
+  }
+}
