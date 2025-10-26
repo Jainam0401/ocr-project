@@ -21,7 +21,7 @@ COPY hin.traineddata /usr/share/tesseract-ocr/5/tessdata/hin.traineddata
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci 
 
 COPY . .
 
